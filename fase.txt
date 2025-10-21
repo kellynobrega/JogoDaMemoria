@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Jogo da Memória</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: 'Arial', sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      min-height: 100vh;
+      background: url("https://media.discordapp.net/attachments/1063950511625220117/1423119069321760798/00.jpeg") no-repeat center center fixed;
+      background-size: cover;
+      backdrop-filter: blur(8px);
+      transition: background-color 0.3s ease;
+    }
+
+    body.fim-jogo {
+      background-color: #000;
+      color: white;
+    }
+
+    #container {
+      width: 100%;
+      max-width: 900px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.85);
+      border-radius: 15px;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    #tabuleiro {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 15px;
+      width: 100%;
+      margin: 20px 0;
+    }
+
+    .carta {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border-radius: 10px;
+      background-color: #f4f4f4;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+      position: relative;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      overflow: hidden;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .carta:hover {
+      transform: scale(1.05);
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+    }
+
+    .carta img {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      transition: opacity 0.3s;
+      max-width: 80%;
+      max-height: 80%;
+      object-fit: contain;
+    }
+
+    .carta img.animal { opacity: 0; }
+    .carta.virada img.animal { opacity: 1; }
+    .carta img.interrogacao { opacity: 1; }
+    .carta.virada img.interrogacao { opacity: 0; }
+
+    .carta.correta {
+      background-color: #aaffaa;
+      cursor: default;
+      opacity: 1;
+      box-shadow: 0 4px 8px rgba(0, 255, 0, 0.5);
+    }
+
+    #painel {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      justify-content: center;
+      font-size: 1.2em;
+      margin-bottom: 20px;
+    }
+
+    #mensagem {
+      font-size: 1.5em;
+      margin: 10px 0;
+      color: #008000;
+    }
+
+    button {
+      padding: 12px 25px;
+      background-color: #ffeb3b;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1.3em;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      margin-top: 20px;
+      transition: transform 0.3s ease, background-color 0.3s ease;
+    }
+
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button:hover:not(:disabled) { transform: scale(1.1); background-color: #fbc02d; }
+
+    #tela-parabens {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 130vh;
+      background: black;
+      color: white;
+      font-size: 2.5em;
+      font-weight: bold;
+      justify-content: center;
+      align-items: center;
+      z-index: 999;
+      flex-direction: column;
+      text-align: center;
+    }
+
+    #tela-parabens button {
+      margin-top: 20px;
+      padding: 12px 24px;
+      font-size: 1em;
+      border: none;
+      border-radius: 8px;
+      background-color: #ff99cc;
+      color: black;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="container">
+    <div id="painel">
+      <div><strong>Nível:</strong> <span id="nivelAtual">1</span></div>
+      <div><strong>Tentativas:</strong> <span id="tentativas">0</span></div>
+      <div><strong>Acertos:</strong> <span id="acertos">0</span></div>
+    </div>
+    <div id="mensagem">Encontre os pares!</div>
+    <div id="tabuleiro"></div>
+    <button id="btnProxima" onclick="avancarFase()" disabled>Próxima Fase</button>
+    <button id="btnJogarNovamente" onclick="reiniciarJogo()" style="display:none;">Jogar Novamente</button>
+  </div>
+
+  <!-- Tela preta parabéns -->
+  <div id="tela-parabens">
+    🎉 Parabéns! Você completou todas as fases! 🎉
+    <button onclick="reiniciarJogo()">Jogar Novamente</button>
+  </div>
+
+  <script>
+    const somClique = new Audio("https://actions.google.com/sounds/v1/cartoon/pop.ogg");
+    const somParCerto = new Audio("https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg");
+    const somParErrado = new Audio("https://actions.google.com/sounds/v1/cartoon/boing.ogg");
+    const somAplausos = new Audio("https://www.soundjay.com/human/sounds/applause-8.mp3");
+
+    let nivel = 1;
+    let animais = [
+      "gato","cachorro","passaro","cavalo","cabra","pinguim",
+      "cobra","camaleão","zebra","iena","leão","girafa","tigre",
+      "louva-deus","pavão","lontra","hipopotamo","castor","avestruz","elefante",
+      "sapo","tartaruga","preguiça","coala","urso","panda","raposa",
+      "lobo","onça","furão","rato","cavalo-marinho","arara",
+      "baleia","vaca","flamingo","abelha","borboleta","tucano","aranha"
+    ];
+    let cartas = [];
+    let cartasViradas = [];
+    let podeVirar = false;
+    let paresEncontrados = 0;
+    let tentativasCount = 0;
+    let acertosCount = 0;
+
+    const totalParesNivel = { 1: 5, 2: 6, 3: 7, 4: 8, 5: 9, 6: 10, 7: 11, 8: 12, 9: 13, 10: 14 };
+
+    const imagemInterrogacao = "https://i.postimg.cc/kGdGvwk4/1.png";
+
+    function embaralhar(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+    }
+
+    function criarCartas() {
+      const tabuleiro = document.getElementById("tabuleiro");
+      tabuleiro.innerHTML = "";
+
+      let animaisSelecionados = [...animais];
+      embaralhar(animaisSelecionados);
+      animaisSelecionados = animaisSelecionados.slice(0, totalParesNivel[nivel]);
+
+      cartas = [...animaisSelecionados, ...animaisSelecionados];
+      embaralhar(cartas);
+
+      cartasViradas = [];
+      paresEncontrados = 0;
+      tentativasCount = 0;
+      acertosCount = 0;
+
+      cartas.forEach(animal => {
+        const carta = document.createElement("div");
+        carta.classList.add("carta");
+
+        const imgInterrogacao = document.createElement("img");
+        imgInterrogacao.src = imagemInterrogacao;
+        imgInterrogacao.classList.add("interrogacao");
+
+        const imgAnimal = document.createElement("img");
+        imgAnimal.src = obterImagemAnimal(animal);
+        imgAnimal.classList.add("animal");
+
+        carta.appendChild(imgInterrogacao);
+        carta.appendChild(imgAnimal);
+
+        carta.addEventListener("click", () => {
+          if (!carta.classList.contains("virada") && !carta.classList.contains("correta") && podeVirar) {
+            virarCarta(carta, animal);
+          }
+        });
+
+        tabuleiro.appendChild(carta);
+      });
+
+      const todas = document.querySelectorAll(".carta");
+      todas.forEach(c => c.classList.add("virada"));
+      setTimeout(() => {
+        todas.forEach(c => c.classList.remove("virada"));
+        podeVirar = true;
+      }, 3000);
+
+      atualizarPainel();
+      document.getElementById("mensagem").textContent = "Encontre os pares!";
+      document.getElementById("btnProxima").disabled = true;
+      document.getElementById("btnJogarNovamente").style.display = "none"; // Esconde o botão "Jogar Novamente"
+    }
+
+    function virarCarta(carta, animal) {
+      carta.classList.add("virada");
+      somClique.currentTime = 0;
+      somClique.play();
+      cartasViradas.push({ elemento: carta, animal });
+
+      if (cartasViradas.length === 2) {
+        podeVirar = false;
+        tentativasCount++;
+        atualizarPainel();
+
+        const [p1, p2] = cartasViradas;
+        if (p1.animal === p2.animal) {
+          somParCerto.currentTime = 0;
+          somParCerto.play();
+          p1.elemento.classList.add("correta");
+          p2.elemento.classList.add("correta");
+          paresEncontrados++;
+          acertosCount++;
+          cartasViradas = [];
+
+          if (paresEncontrados === totalParesNivel[nivel]) {
+            setTimeout(() => {
+              somAplausos.currentTime = 0;
+              somAplausos.play();
+              document.getElementById("mensagem").textContent =
+                `🎉 Parabéns! Você completou a fase ${nivel}!`;
+              document.getElementById("btnProxima").disabled = false;
+              
+              // Se chegou ao nível 10
+              if (nivel === 10) {
+                document.body.classList.add('fim-jogo');
+                document.getElementById("tela-parabens").style.display = "flex"; // Mostra a tela de parabéns
+                somAplausos.currentTime = 0;
+                somAplausos.play(); // Toca o som de aplausos
+              }
+            }, 500);
+          } else {
+            podeVirar = true;
+          }
+        } else {
+          somParErrado.currentTime = 0;
+          somParErrado.play();
+          setTimeout(() => {
+            p1.elemento.classList.remove("virada");
+            p2.elemento.classList.remove("virada");
+            cartasViradas = [];
+            podeVirar = true;
+          }, 1000);
+        }
+      }
+    }
+
+    function avancarFase() {
+      nivel++;
+      if (nivel > 10) {
+        nivel = 10;  // Limita ao nível 10
+      }
+      criarCartas();
+    }
+
+    function reiniciarJogo() {
+      nivel = 1;
+      document.body.classList.remove('fim-jogo'); // Remove a tela preta
+      document.getElementById("tela-parabens").style.display = "none"; // Esconde a tela de parabéns
+      criarCartas(); // Reinicia o jogo
+    }
+
+    function atualizarPainel() {
+      document.getElementById("nivelAtual").textContent = nivel;
+      document.getElementById("tentativas").textContent = tentativasCount;
+      document.getElementById("acertos").textContent = acertosCount;
+    }
+
+    function obterImagemAnimal(animal) {
+      switch (animal) {
+        case "gato": return "https://i.postimg.cc/NjMrCJPN/1.jpg";
+        case "cachorro": return "https://i.postimg.cc/kgzD1nSD/2.jpg";
+        case "passaro": return "https://i.postimg.cc/05njgGS4/3.jpg";
+        case "tartaruga": return "https://i.postimg.cc/nVNDSGfP/4.jpg";
+        case "cavalo": return "https://i.postimg.cc/76VHkD5Y/5.jpg";
+        case "cabra": return "https://i.postimg.cc/15T9Pvz1/6.jpg";
+        case "pinguim": return "https://i.postimg.cc/XN1Wcsd0/7.jpg";
+        case "cobra": return "https://i.postimg.cc/JhQVyxRh/8.jpg";
+        case "camaleão": return "https://i.postimg.cc/Bn4GJRG7/9.jpg";
+        case "zebra": return "https://i.postimg.cc/Dw2R9sq5/10.jpg";
+        case "iena": return "https://i.postimg.cc/Y0KsbmrZ/11.jpg";
+        case "girafa": return "https://i.postimg.cc/RhLXdsb4/12.jpg";
+        case "leão": return "https://i.postimg.cc/PrMRQxBR/13.jpg";
+        case "tigre": return "https://i.postimg.cc/cC0cv715/14.jpg";
+        case "louva-deus": return "https://i.postimg.cc/0jkpk8cr/15.jpg";
+        case "sapo": return "https://i.postimg.cc/ydd1stcv/16.jpg";
+        case "elefante": return "https://i.postimg.cc/NFZfND9v/18.jpg";
+        case "pavão": return "https://i.postimg.cc/3x42JfC8/19.jpg";
+        case "lontra": return "https://i.postimg.cc/Zn5dkw54/20.jpg";
+        case "hipopotamo": return "https://i.postimg.cc/xTqztpZ6/22.jpg";
+        case "castor": return "https://i.postimg.cc/NFnL3Yn4/23.jpg";
+        case "avestruz": return "https://i.postimg.cc/XYdXzRkc/24.jpg";
+        case "preguiça": return "https://i.postimg.cc/J7HyXHHc/25.jpg";
+        case "coala": return "https://i.postimg.cc/ht246K7t/26.jpg";
+        case "urso": return "https://i.postimg.cc/Bb54g30Z/27.jpg";
+        case "panda": return "https://i.postimg.cc/R03mYKBb/28.jpg";
+        case "raposa": return "https://i.postimg.cc/xTtSTtjt/29.jpg";
+        case "lobo": return "https://i.postimg.cc/1tpkxKYW/30.jpg";
+        case "onça": return "https://i.postimg.cc/nztW1DcB/31.jpg";
+        case "furão": return "https://i.postimg.cc/G3Kfk90Y/32.jpg";
+        case "rato": return "https://i.postimg.cc/sghK0gL5/33.jpg";
+        case "baleia": return "https://i.postimg.cc/d1pjBM9z/34.jpg";
+        case "cavalo-marinho": return "https://i.postimg.cc/vT45gPF2/38.jpg";
+        case "arara": return "https://i.postimg.cc/d1xyY8kT/39.jpg";
+        case "vaca": return "https://i.postimg.cc/sfWYrNmp/40.jpg";
+        case "flamingo": return "https://i.postimg.cc/7YD2yYbp/45.jpg";
+        case "abelha": return "https://i.postimg.cc/vTvDmfDh/46.jpg";
+        case "borboleta": return "https://i.postimg.cc/3xqNWKJ5/47.jpg";
+        case "tucano": return "https://i.postimg.cc/138RkL0Y/48.jpg";
+        case "aranha": return "https://i.postimg.cc/5y9bnGN5/49.jpg";
+        default: return imagemInterrogacao;
+      }
+    }
+
+    function salvarProgresso() {
+      const dados = { nivel, tentativas: tentativasCount, acertos: acertosCount };
+      localStorage.setItem("jogoMemoriaProgresso", JSON.stringify(dados));
+    }
+
+    function carregarProgresso() {
+      const str = localStorage.getItem("jogoMemoriaProgresso");
+      if (str) {
+        try {
+          const dados = JSON.parse(str);
+          if (dados.nivel) nivel = dados.nivel;
+          if (dados.tentativas) tentativasCount = dados.tentativas;
+          if (dados.acertos) acertosCount = dados.acertos;
+        } catch (e) {
+          console.warn("Erro ao ler progresso:", e);
+        }
+      }
+    }
+
+    window.onload = () => {
+      carregarProgresso();
+      criarCartas();
+    };
+  </script>
+
+</body>
+</html>
